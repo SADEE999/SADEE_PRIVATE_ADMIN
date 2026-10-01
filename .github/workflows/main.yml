@@ -1,0 +1,222 @@
+name: SADEE PRIVATE ADMIN - Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: sadee-private-admin-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Extract Admin & Deploy
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+
+      # =========================
+      # CHECKOUT
+      # =========================
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+
+      # =========================
+      # FIND ADMIN ZIP
+      # =========================
+
+      - name: Find Admin ZIP
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo " SEARCHING ADMIN ZIP"
+          echo "======================================"
+
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "❌ Admin ZIP not found"
+            exit 1
+          fi
+
+          echo "✅ ZIP found:"
+          echo "$ZIP_FILE"
+
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+
+
+      # =========================
+      # EXTRACT ZIP
+      # =========================
+
+      - name: Extract Admin ZIP
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf extracted
+          mkdir -p extracted
+
+          echo "======================================"
+          echo " EXTRACTING ADMIN ZIP"
+          echo "======================================"
+
+          unzip -o "$ZIP_FILE" -d extracted
+
+          echo "✅ ZIP extracted"
+
+          echo ""
+          echo "Extracted files:"
+          find extracted -maxdepth 4 -type f | sort
+
+
+      # =========================
+      # FIND ADMIN INDEX
+      # =========================
+
+      - name: Find Admin Panel
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo " FINDING ADMIN PANEL"
+          echo "======================================"
+
+          ADMIN_INDEX=$(find extracted \
+            -type f \
+            -path "*/admin/index.html" \
+            | head -n 1)
+
+          if [ -z "$ADMIN_INDEX" ]; then
+
+            ADMIN_INDEX=$(find extracted \
+              -type f \
+              -iname "index.html" \
+              | head -n 1)
+
+          fi
+
+          if [ -z "$ADMIN_INDEX" ]; then
+            echo "❌ Admin index.html not found"
+            exit 1
+          fi
+
+          echo "✅ Admin index:"
+          echo "$ADMIN_INDEX"
+
+          ADMIN_ROOT=$(dirname "$ADMIN_INDEX")
+
+          echo "ADMIN_ROOT=$ADMIN_ROOT" >> "$GITHUB_ENV"
+
+
+      # =========================
+      # CREATE PUBLICATION FOLDER
+      # =========================
+
+      - name: Prepare Admin Website
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf dist
+          mkdir -p dist
+
+          echo "======================================"
+          echo " PREPARING ADMIN WEBSITE"
+          echo "======================================"
+
+          cp -a "$ADMIN_ROOT"/. dist/
+
+          touch dist/.nojekyll
+
+          echo ""
+          echo "Admin files:"
+          find dist -maxdepth 5 -type f | sort
+
+
+      # =========================
+      # VERIFY
+      # =========================
+
+      - name: Verify Admin Website
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo " ADMIN CHECK"
+          echo "======================================"
+
+          test -f dist/index.html
+
+          echo "✅ index.html"
+
+          if [ -f dist/config.js ]; then
+            echo "✅ config.js"
+          fi
+
+          if [ -f dist/admin.js ]; then
+            echo "✅ admin.js"
+          fi
+
+          if [ -f dist/admin.css ]; then
+            echo "✅ admin.css"
+          fi
+
+          echo ""
+          echo "✅ ADMIN PANEL READY"
+
+
+      # =========================
+      # GITHUB PAGES
+      # =========================
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+
+      - name: Upload Admin Artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./dist
+
+
+      - name: Deploy Admin Panel
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+
+      # =========================
+      # COMPLETE
+      # =========================
+
+      - name: Deployment Complete
+        shell: bash
+        run: |
+          echo ""
+          echo "======================================"
+          echo " SADEE PRIVATE ADMIN LIVE"
+          echo "======================================"
+
+          echo ""
+          echo "Admin URL:"
+          echo "${{ steps.deployment.outputs.page_url }}"
+
+          echo ""
+          echo "======================================"
